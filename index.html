@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Temporizador (Principal)</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+</head>
+<body>
+  <div id="top-right-corner">
+    <button onclick="toggleDuplicate()">Duplicar Pantalla</button>
+  </div>
+
+  <div id="layout-container">
+    <!-- Sección del contador -->
+    <div id="center-section">
+      <h1 id="current-segment">Segmento actual: No iniciado</h1>
+      <h2 id="time-left" class="dynamic-font" onclick="openModifyModal()">00:00</h2>
+
+      <div class="buttons controls">
+        <button onclick="pauseTimer()">Pausar</button>
+        <button onclick="startNow()">Iniciar/Continuar</button>
+        <button onclick="resetTimer()">Reiniciar</button>
+      </div>
+    </div>
+
+    <!-- Sección de botones para segmentos -->
+    <div id="right-section">
+      <h3>Segmentos</h3>
+      <button onclick="startTimer(0)">Canción y Oración Inicial</button>
+      <button onclick="startTimer(1)">Discurso Público</button>
+      <button onclick="startTimer(2)">Transición</button>
+      <button onclick="startTimer(3)">Estudio de La Atalaya</button>
+      <button onclick="startTimer(4)">Canción y Oración Final</button>
+    </div>
+  </div>
+
+  <!-- Modal para modificar tiempo -->
+  <div id="modify-modal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModifyModal()">&times;</span>
+      <h3>Modificar Tiempo</h3>
+      <div class="modal-row">
+        <label>Minutos:</label>
+        <input type="number" id="minutes-input" min="0" value="0">
+      </div>
+      <div class="modal-row">
+        <label>Segundos:</label>
+        <input type="number" id="seconds-input" min="0" max="59" value="0">
+      </div>
+      <div class="modal-buttons">
+        <button onclick="confirmModifyTime()">Confirmar</button>
+        <button onclick="closeModifyModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let duplicateWindow = null;
+    let currentTimeLeft = 0;
+
+    function startTimer(index) {
+      fetch('/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ segment_index: index })
+      });
+    }
+    function startNow() {
+      fetch('/start_now', { method: 'POST' });
+    }
+    function pauseTimer() {
+      fetch('/pause', { method: 'POST' });
+    }
+    function resetTimer() {
+      fetch('/reset', { method: 'POST' });
+    }
+    function toggleDuplicate() {
+      fetch('/toggle_duplicate', { method: 'POST' });
+    }
+
+    // Modal
+    function openModifyModal() {
+      const min = Math.floor(currentTimeLeft / 60);
+      const sec = currentTimeLeft % 60;
+      document.getElementById('minutes-input').value = min;
+      document.getElementById('seconds-input').value = sec;
+      document.getElementById('modify-modal').style.display = 'block';
+    }
+    function closeModifyModal() {
+      document.getElementById('modify-modal').style.display = 'none';
+    }
+    function confirmModifyTime() {
+      const newMin = parseInt(document.getElementById('minutes-input').value) || 0;
+      const newSec = parseInt(document.getElementById('seconds-input').value) || 0;
+      fetch('/modify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_minutes: newMin, new_seconds: newSec })
+      }).then(() => {
+        closeModifyModal();
+      });
+    }
+
+    // Socket events
+    socket.on('update_time', data => {
+      currentTimeLeft = data.time_left;
+
+      const minutes = Math.floor(data.time_left / 60);
+      const seconds = data.time_left % 60;
+      document.getElementById('time-left').innerText =
+        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+      document.getElementById('current-segment').innerText =
+        `Segmento actual: ${data.current_segment}`;
+
+      // Quitar parpadeo si estaba
+      document.body.classList.remove('blink-red', 'blink-white');
+
+      // Color base:
+      document.body.style.backgroundColor = "#f5f5f5";
+      document.getElementById('time-left').style.color = "#000";
+
+      // Color según % de tiempo (solo Discurso Público/Atalaya)
+      if (["Discurso Público", "Estudio de La Atalaya"].includes(data.current_segment) 
+          && data.segment_duration > 0) {
+        const fraction = data.time_left / data.segment_duration;
+        if (data.time_left === 0) {
+          document.body.style.backgroundColor = "red";
+          document.getElementById('time-left').style.color = "#fff";
+        }
+        else if (fraction < 0.1) {
+          document.body.style.backgroundColor = "red";
+          document.getElementById('time-left').style.color = "#fff";
+        }
+        else if (fraction < 0.2) {
+          document.body.style.backgroundColor = "yellow";
+          document.getElementById('time-left').style.color = "#000";
+        }
+      }
+    });
+
+    // Aquí está el truco: alternamos rojo/blanco al recibir update_blink
+    socket.on('update_blink', data => {
+      if (data.blink) {
+        // True -> rojo
+        document.body.classList.remove('blink-white');
+        document.body.classList.add('blink-red');
+      } else {
+        // False -> blanco
+        document.body.classList.remove('blink-red');
+        document.body.classList.add('blink-white');
+      }
+    });
+
+    socket.on('toggle_duplicate', data => {
+      if (data.open) {
+        if (!duplicateWindow || duplicateWindow.closed) {
+          duplicateWindow = window.open('/duplicate','VentanaDuplicada','width=800,height=600');
+        }
+      } else {
+        if (duplicateWindow && !duplicateWindow.closed) {
+          duplicateWindow.close();
+          duplicateWindow = null;
+        }
+      }
+    });
+  </script>
+</body>
+</html>

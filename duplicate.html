@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Duplicado</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+</head>
+<body>
+  <div id="duplicate-container">
+    <h1 id="current-segment">Segmento actual: No iniciado</h1>
+    <h2 id="time-left" class="dynamic-font">00:00</h2>
+  </div>
+
+  <script>
+    const socket = io();
+
+    socket.on('update_time', data => {
+      const minutes = Math.floor(data.time_left / 60);
+      const seconds = data.time_left % 60;
+
+      const currentSegmentEl = document.getElementById('current-segment');
+      const timeLeftEl = document.getElementById('time-left');
+      const bodyEl = document.body;
+
+      currentSegmentEl.innerText = `Segmento actual: ${data.current_segment}`;
+      timeLeftEl.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+      // Quitar parpadeo si estaba
+      bodyEl.classList.remove('blink-red', 'blink-white');
+
+      // Color base
+      bodyEl.style.backgroundColor = "#f5f5f5";
+      timeLeftEl.style.color = "#000";
+
+      if (["Discurso Público", "Estudio de La Atalaya"].includes(data.current_segment) 
+          && data.segment_duration > 0) {
+        const fraction = data.time_left / data.segment_duration;
+
+        if (data.time_left === 0) {
+          bodyEl.style.backgroundColor = "red";
+          timeLeftEl.style.color = "#fff";
+        }
+        else if (fraction < 0.1) {
+          bodyEl.style.backgroundColor = "red";
+          timeLeftEl.style.color = "#fff";
+        }
+        else if (fraction < 0.2) {
+          bodyEl.style.backgroundColor = "yellow";
+          timeLeftEl.style.color = "#000";
+        }
+      }
+    });
+
+    socket.on('update_blink', data => {
+      if (data.blink) {
+        document.body.classList.remove('blink-white');
+        document.body.classList.add('blink-red');
+      } else {
+        document.body.classList.remove('blink-red');
+        document.body.classList.add('blink-white');
+      }
+    });
+  </script>
+</body>
+</html>
